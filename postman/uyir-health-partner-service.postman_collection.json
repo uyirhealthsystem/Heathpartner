@@ -1,0 +1,1631 @@
+{
+  "info": {
+    "name": "Uyir Health Partner Service",
+    "description": "Health Partner service: profiles, District → Block → Village location, referrals, wallet and withdrawals.\n\n**Caller identity:** the API Gateway injects `x-user-id` and `x-user-role`. Here they are placeholders set from collection variables:\n- `hpUserId` / `hpRole` — the Health Partner (role HP)\n- `newHpUserId` — second Health Partner, used for the referral flow\n- `adminUserId` / `adminRole` — ADMIN or SUPER_ADMIN (locations + district APIs)\n\n**Run order:** folders 1 → 7 run top to bottom as a full flow (Collection Runner works). IDs (district, block, village, referral code, …) are saved into collection variables as you go. Select the **Health Partner Service - local** environment before running. On re-runs change `hpUserId`, `newHpUserId`, `districtName`, `blockName` and `villageName` in the environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "districtId",
+      "value": ""
+    },
+    {
+      "key": "blockId",
+      "value": ""
+    },
+    {
+      "key": "villageId",
+      "value": ""
+    },
+    {
+      "key": "referralCode",
+      "value": ""
+    },
+    {
+      "key": "healthPartnerId",
+      "value": ""
+    },
+    {
+      "key": "citizenUserId",
+      "value": ""
+    },
+    {
+      "key": "withdrawalId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"ok\", () => pm.expect(json.status === \"ok\").to.be.true);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      }
+    },
+    {
+      "name": "1. Locations (District → Block → Village)",
+      "description": "Location master. POST = ADMIN / SUPER_ADMIN (admin headers). GET = any role (uses the HP headers). Names are unique (case-insensitive) within their parent, so change the names on re-runs or you'll get 400 \"already exists\".",
+      "item": [
+        {
+          "name": "Create District",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has id\", () => pm.expect(typeof json.id === \"string\").to.be.true);",
+                  "pm.collectionVariables.set(\"districtId\", json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{districtName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Block",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has id\", () => pm.expect(typeof json.id === \"string\").to.be.true);",
+                  "pm.collectionVariables.set(\"blockId\", json.id);",
+                  "pm.test(\"belongs to district\", () => pm.expect(json.districtId === pm.collectionVariables.get(\"districtId\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/blocks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "blocks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{blockName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Village",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has id\", () => pm.expect(typeof json.id === \"string\").to.be.true);",
+                  "pm.collectionVariables.set(\"villageId\", json.id);",
+                  "pm.test(\"belongs to block\", () => pm.expect(json.blockId === pm.collectionVariables.get(\"blockId\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/blocks/{{blockId}}/villages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "blocks",
+                "{{blockId}}",
+                "villages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{villageName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Districts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"contains created district\", () => pm.expect(json.some(d => d.id === pm.collectionVariables.get(\"districtId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Blocks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"contains created block\", () => pm.expect(json.some(b => b.id === pm.collectionVariables.get(\"blockId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/blocks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "blocks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Villages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"contains created village\", () => pm.expect(json.some(v => v.id === pm.collectionVariables.get(\"villageId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/blocks/{{blockId}}/villages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "blocks",
+                "{{blockId}}",
+                "villages"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Health Partners",
+      "description": "Role HP. The user id comes from the x-user-id header — never send it in the body.",
+      "item": [
+        {
+          "name": "Create Health Partner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has referral code\", () => pm.expect(/^HP/.test(json.referralCode)).to.be.true);",
+                  "pm.test(\"location saved\", () => pm.expect(json.villageId === pm.collectionVariables.get(\"villageId\") && !!json.districtName).to.be.true);",
+                  "pm.collectionVariables.set(\"referralCode\", json.referralCode);",
+                  "pm.collectionVariables.set(\"healthPartnerId\", json.healthPartnerId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Ravi Kumar\",\n  \"phone\": \"9876543210\",\n  \"email\": \"ravi@example.com\",\n  \"dateOfBirth\": \"1990-05-15\",\n  \"gender\": \"MALE\",\n  \"addressLine1\": \"12 Gandhi Street\",\n  \"pincode\": \"625001\",\n  \"districtId\": \"{{districtId}}\",\n  \"blockId\": \"{{blockId}}\",\n  \"villageId\": \"{{villageId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Required: fullName, phone, districtId. Optional: blockId, villageId (needs blockId), email, dateOfBirth (YYYY-MM-DD), gender (MALE|FEMALE|OTHER), addressLine1, addressLine2, city, state, pincode, profilePhotoUrl, referralCode."
+          }
+        },
+        {
+          "name": "Create Health Partner (with referral code)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"block only, no village\", () => pm.expect(json.blockId && json.villageId === null).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{newHpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Priya Devi\",\n  \"phone\": \"9123456780\",\n  \"districtId\": \"{{districtId}}\",\n  \"blockId\": \"{{blockId}}\",\n  \"referralCode\": \"{{referralCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Referred by the first Health Partner. Credits ₹10 to the referrer in the same transaction."
+          }
+        },
+        {
+          "name": "Dashboard",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has 1 referral\", () => pm.expect(json.totalReferrals >= 1).to.be.true);",
+                  "pm.test(\"earned ₹10+\", () => pm.expect(Number(json.totalEarnings) >= 10).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"is ACTIVE\", () => pm.expect(json.status === \"ACTIVE\").to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners",
+                "me"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Both fields optional: `status` (ACTIVE | INACTIVE), `referralCode` (1–30 chars)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Profile",
+      "description": "Role HP. This service is the owner of all Health Partner profile data.",
+      "item": [
+        {
+          "name": "Get Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has name and district\", () => pm.expect(!!json.fullName && !!json.districtName).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"address updated\", () => pm.expect(json.addressLine1 === \"5 Temple Road\").to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressLine1\": \"5 Temple Road\",\n  \"city\": \"Madurai\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Any profile field, all optional."
+          }
+        },
+        {
+          "name": "Update Profile Location",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"village set\", () => pm.expect(json.villageId === pm.collectionVariables.get(\"villageId\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"districtId\": \"{{districtId}}\",\n  \"blockId\": \"{{blockId}}\",\n  \"villageId\": \"{{villageId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Location is replaced as a group: send districtId with optional blockId / villageId. Omitted or null block / village are cleared."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Referrals",
+      "description": "Role HP. Only CITIZEN referrals are created here; HP referrals happen during Health Partner creation.",
+      "item": [
+        {
+          "name": "Create Citizen Referral",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh citizen id per run - a user can only ever be referred once.",
+                  "pm.collectionVariables.set(\"citizenUserId\", \"citizen-\" + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"reward ₹10\", () => pm.expect(Number(json.rewardAmount) === 10).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\",\n  \"referredType\": \"CITIZEN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List My Referrals",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has referrals\", () => pm.expect(Array.isArray(json) && json.length >= 1).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "referrals"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Payments",
+      "description": "Role HP. Wallet is credited ₹10 per referral. A bank account is required before withdrawal.",
+      "item": [
+        {
+          "name": "Wallet Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"has balance\", () => pm.expect(json.walletBalance !== undefined).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Payment History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"reward transactions\", () => pm.expect(json.every(x => x.type === \"REFERRAL_REWARD\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Save Bank Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"saved\", () => pm.expect(json.ifscCode === \"SBIN0001234\").to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/bank",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "bank"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountHolderName\": \"Ravi Kumar\",\n  \"accountNumber\": \"123456789012\",\n  \"ifscCode\": \"SBIN0001234\",\n  \"bankName\": \"State Bank of India\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Saving again updates the existing account (one per Health Partner)."
+          }
+        },
+        {
+          "name": "Withdraw",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"PENDING\", () => pm.expect(json.status === \"PENDING\").to.be.true);",
+                  "pm.collectionVariables.set(\"withdrawalId\", json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "withdraw"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Withdrawal History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"contains withdrawal\", () => pm.expect(json.some(w => w.id === pm.collectionVariables.get(\"withdrawalId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/withdrawals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "withdrawals"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. District Level Health Partners",
+      "description": "ADMIN / SUPER_ADMIN only.",
+      "item": [
+        {
+          "name": "District Health Partners",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"paginated\", () => pm.expect(json.pagination.total >= 2 && Array.isArray(json.data)).to.be.true);",
+                  "pm.test(\"district name\", () => pm.expect(!!json.district.name).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/health-partners?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "health-partners"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "blockId",
+                  "value": "{{blockId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "villageId",
+                  "value": "{{villageId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "ravi",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paginated Health Partners in a district. Optional filters (enable in Params): blockId, villageId, status (ACTIVE | INACTIVE), search (name or phone). limit max 100."
+          }
+        },
+        {
+          "name": "District Health Partners by Block",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"all in block\", () => pm.expect(json.data.every(h => h.blockId === pm.collectionVariables.get(\"blockId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/health-partners?blockId={{blockId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "health-partners"
+              ],
+              "query": [
+                {
+                  "key": "blockId",
+                  "value": "{{blockId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "District Health Partners by Village",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"all in village\", () => pm.expect(json.data.every(h => h.villageId === pm.collectionVariables.get(\"villageId\"))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/health-partners?villageId={{villageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "health-partners"
+              ],
+              "query": [
+                {
+                  "key": "villageId",
+                  "value": "{{villageId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "District Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"totals add up\", () => pm.expect(json.total === json.active + json.inactive).to.be.true);",
+                  "pm.test(\"has block breakdown\", () => pm.expect(Array.isArray(json.blocks) && json.blocks.every(b => Array.isArray(b.villages))).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts/{{districtId}}/health-partners/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts",
+                "{{districtId}}",
+                "health-partners",
+                "summary"
+              ]
+            },
+            "description": "Totals and counts per block and per village, including blocks and villages with 0."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Validation Checks",
+      "description": "Negative tests - every request here is expected to fail with 400.",
+      "item": [
+        {
+          "name": "Duplicate Health Partner → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: already exists\", () => pm.expect(json.message.includes(\"already exists\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Ravi Kumar\",\n  \"phone\": \"9876543210\",\n  \"districtId\": \"{{districtId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Village without block → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: blockId is required\", () => pm.expect(json.message.includes(\"blockId is required\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"districtId\": \"{{districtId}}\",\n  \"villageId\": \"{{villageId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Unknown district → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: District not found\", () => pm.expect(json.message.includes(\"District not found\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"districtId\": \"does-not-exist\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Duplicate district name → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: already exists\", () => pm.expect(json.message.includes(\"already exists\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{adminRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/districts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "districts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{districtName}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Withdraw more than balance → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: Insufficient wallet balance\", () => pm.expect(json.message.includes(\"Insufficient wallet balance\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "payments",
+                "withdraw"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Duplicate citizen referral → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"message: already been referred\", () => pm.expect(json.message.includes(\"already been referred\")).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\",\n  \"referredType\": \"CITIZEN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

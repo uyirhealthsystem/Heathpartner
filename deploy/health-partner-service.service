@@ -1,0 +1,22 @@
+[Unit]
+Description=Uyir Health Partner service
+After=network.target
+
+[Service]
+Type=simple
+User=healthpartner
+WorkingDirectory=/opt/health-partner-service/current
+EnvironmentFile=/opt/health-partner-service/shared/health-partner-service.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=3
+# hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/health-partner-service
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

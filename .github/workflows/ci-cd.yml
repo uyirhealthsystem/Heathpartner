@@ -1,0 +1,130 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ------------------------------------------------------------------ CI ----
+  test:
+    name: Typecheck + build + API tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: healthpartner_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/healthpartner_test
+      DB_SSL: "false"
+      PORT: "3000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Create database schema
+        run: node dist/config/init-db.js
+
+      - name: Start service
+        run: |
+          node dist/server.js > service.log 2>&1 &
+          curl -fsS --retry 15 --retry-delay 1 --retry-connrefused http://127.0.0.1:3000/health
+
+      - name: API tests (Postman collection)
+        run: |
+          npx --yes newman@6 run postman/uyir-health-partner-service.postman_collection.json \
+            -e postman/uyir-health-partner-service.local.postman_environment.json \
+            --env-var baseUrl=http://127.0.0.1:3000 \
+            --reporters cli
+
+      - name: Service log
+        if: always()
+        run: cat service.log || true
+
+  # -------------------------------------------------------------- Deploy ----
+  deploy:
+    name: Deploy to EC2
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build release
+        run: npm run build
+
+      - name: Assemble release bundle
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp -r dist package.json package-lock.json release/
+          cp -r deploy release/deploy
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload release to EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            'rm -rf /opt/health-partner-service/releases/next && mkdir -p /opt/health-partner-service/releases/next'
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            release/ \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/health-partner-service/releases/next/"
+
+      - name: Activate release (install, update schema, restart, health check)
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            'bash -s' < deploy/remote-release.sh
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
