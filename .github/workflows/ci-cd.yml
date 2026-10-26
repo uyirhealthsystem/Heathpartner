@@ -53,8 +53,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Create database schema
-        run: node dist/config/init-db.js
+      - name: Apply database migrations
+        run: npm run db:migrate
+
+      - name: Check schema.prisma matches the migrations
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Start service
         run: |
@@ -100,7 +103,7 @@ jobs:
         run: |
           rm -rf release
           mkdir -p release
-          cp -r dist package.json package-lock.json release/
+          cp -r dist prisma prisma.config.ts package.json package-lock.json release/
           cp -r deploy release/deploy
 
       - name: Configure SSH

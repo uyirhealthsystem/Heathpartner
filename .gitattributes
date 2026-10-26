@@ -3,3 +3,6 @@
 *.service  text eol=lf
 *.yml      text eol=lf
 *.env.example text eol=lf
+
+# Prisma checksums migration files - keep them identical on every OS.
+prisma/**  text eol=lf

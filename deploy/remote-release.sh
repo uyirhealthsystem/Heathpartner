@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs ON the EC2 host (piped in over SSH by the GitHub Actions deploy job).
-# Promotes the freshly-uploaded release in releases/next, updates the database
-# schema, restarts the service and rolls back if the health check fails.
+# Promotes the freshly-uploaded release in releases/next, applies database
+# migrations, restarts the service and rolls back if the health check fails.
 set -euo pipefail
 
 SERVICE=health-partner-service
@@ -19,7 +19,7 @@ PREVIOUS=$(readlink -f "$ROOT/current" 2>/dev/null || true)
 mv "$ROOT/releases/next" "$REL"
 cd "$REL"
 
-# DATABASE_URL etc. for the schema step below.
+# DATABASE_URL etc. for the migration step below.
 set -a; . "$ENV_FILE"; set +a
 export NODE_ENV=production
 PORT=${PORT:-3000}
@@ -27,8 +27,8 @@ PORT=${PORT:-3000}
 echo "==> installing production dependencies"
 npm ci --omit=dev
 
-echo "==> updating database schema (idempotent)"
-node dist/config/init-db.js
+echo "==> applying database migrations (prisma)"
+node prisma/migrate-deploy.js
 
 echo "==> switching 'current' symlink -> $TS"
 ln -sfn "$REL" "$ROOT/current"

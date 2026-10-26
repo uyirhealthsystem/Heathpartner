@@ -23,6 +23,7 @@ Health Partner (HP) backend: profiles, District → Block → Village location, 
 
 ```text
 DATABASE_URL=postgres://...
+# DIRECT_URL=postgres://...   # Neon: direct (non "-pooler") URL, used for migrations
 PORT=3000
 # DB_SSL=false   # only for a local Postgres without SSL
 ```
@@ -31,11 +32,24 @@ PORT=3000
 
 ```bash
 npm install
-npm run db:init
+npm run db:migrate
 npm run dev
 ```
 
-`npm run db:init` is safe to re-run; it creates the location tables and adds the profile / location columns to an existing `health_partners` table. It only needs `DATABASE_URL`.
+## Database migrations (Prisma)
+
+Prisma is used **only for migrations**; the app still queries Postgres with `pg`. The schema lives in `prisma/schema.prisma`, migrations in `prisma/migrations/`.
+
+| Command | What it does |
+|---|---|
+| `npm run db:migrate` | Apply pending migrations. Safe to re-run. Used by CI, EC2 deploys and the Docker image. |
+| `npm run db:migrate:dev -- --name add_x` | **Dev database only.** Edit `schema.prisma`, then run this to generate + apply a new migration. Commit the new folder. |
+| `npm run db:migrate:status` | Show which migrations are applied. |
+
+- A database created by the old `init-db.ts` (tables but no Prisma history) is baselined automatically by `db:migrate`: it re-runs the idempotent `0_init` SQL to fill in anything missing, then marks it applied.
+- The case-insensitive unique indexes on `LOWER(name)` and the CHECK constraints on `referrals` aren't expressible in `schema.prisma`; they live in the migration SQL and Prisma leaves them alone. Add similar things by hand-editing a migration (`db:migrate:dev -- --create-only`).
+- CI fails if `schema.prisma` and the migrations drift apart.
+- Never run `prisma migrate dev`, `migrate reset` or `db push` against a shared / production database — they can drop tables. Give this service its own database (or schema); if another Prisma service shares it, both will write to the same `_prisma_migrations` table.
 
 ## Deployment (AWS EC2 + GitHub Actions)
 
@@ -50,8 +64,8 @@ A systemd service on **Amazon Linux 2023**, releases uploaded over SSH (same lay
 
 **Pipeline** (`.github/workflows/ci-cd.yml`):
 
-1. **CI** (every push / PR to `main`): `npm ci` → typecheck → build → `db:init` on a throwaway Postgres → start the built server → run the whole Postman collection with Newman.
-2. **Deploy** (push to `main` or manual run, only if CI passed): build → rsync `dist/`, `package*.json`, `deploy/` to `releases/next` → `deploy/remote-release.sh` on the host: `npm ci --omit=dev`, update the DB schema (idempotent), switch `current`, restart, health check. **If the health check fails it rolls back** to the previous release.
+1. **CI** (every push / PR to `main`): `npm ci` → typecheck → build → `db:migrate` + schema drift check on a throwaway Postgres → start the built server → run the whole Postman collection with Newman.
+2. **Deploy** (push to `main` or manual run, only if CI passed): build → rsync `dist/`, `prisma/`, `prisma.config.ts`, `package*.json`, `deploy/` to `releases/next` → `deploy/remote-release.sh` on the host: `npm ci --omit=dev`, apply Prisma migrations, switch `current`, restart, health check. **If the health check fails it rolls back** to the previous release.
 
 **One-time EC2 setup** (Amazon Linux 2023 - Amazon Linux 2 is not supported, its glibc is too old for Node 22):
 

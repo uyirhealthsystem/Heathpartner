@@ -1,0 +1,12 @@
+node_modules
+dist
+release
+.env
+.env.*
+!.env.example
+*.log
+.git
+.github
+deploy
+postman
+README.md
