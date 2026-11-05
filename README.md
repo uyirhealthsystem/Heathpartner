@@ -232,6 +232,7 @@ Mounted at `/internal/v1`, which the API Gateway never forwards. No token - like
 - Codes match case-insensitively.
 - Every call is idempotent. `complete` credits ₹10 at most once per user (row lock + unique `referred_user_id`); `credited: false` means it was already paid. It also works with no prior `register` (userservice could not reach this service at signup).
 - A user can be referred once, ever - by an HP code at HP signup or as a citizen.
+- Indexed for volume: codes by `UPPER(referral_code)`, referrals and transactions by HP + newest first (dashboard, *my referrals*, payment history).
 - A PENDING referral never expires. If the HP is made INACTIVE meanwhile, the reward is still paid when the patient links their ABHA.
 
 ### 6. Payments

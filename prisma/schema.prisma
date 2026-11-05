@@ -2,7 +2,8 @@
 // Change this file, then `npm run db:migrate:dev -- --name <change>`.
 //
 // The case-insensitive unique indexes on LOWER(name) for districts, blocks
-// and villages can't be expressed here; they live in the migration SQL.
+// and villages, and the UPPER(referral_code) lookup index on health_partners,
+// can't be expressed here; they live in the migration SQL.
 
 datasource db {
   provider = "postgresql"
@@ -103,6 +104,7 @@ model Referral {
 
   referrer HealthPartner @relation(fields: [referrerHealthPartnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([referrerHealthPartnerId, createdAt(sort: Desc)], map: "referrals_referrer_created_idx")
   @@map("referrals")
 }
 
@@ -117,6 +119,7 @@ model Transaction {
 
   healthPartner HealthPartner @relation(fields: [healthPartnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([healthPartnerId, createdAt(sort: Desc)], map: "transactions_health_partner_created_idx")
   @@map("transactions")
 }
 
