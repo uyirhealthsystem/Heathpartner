@@ -504,7 +504,8 @@
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
                   "pm.test(\"has 1 referral\", () => pm.expect(json.totalReferrals >= 1).to.be.true);",
-                  "pm.test(\"earned ₹10+\", () => pm.expect(Number(json.totalEarnings) >= 10).to.be.true);"
+                  "pm.test(\"earned ₹10+\", () => pm.expect(Number(json.totalEarnings) >= 10).to.be.true);",
+                  "pm.test(\"pendingReferrals is a number\", () => pm.expect(json.pendingReferrals).to.be.a(\"number\"));"
                 ]
               }
             }
@@ -800,8 +801,93 @@
                   "value": "{{citizenUserId}}"
                 }
               ]
+            },
+            "description": "Signup form check, read-only. `referredUserId` = the patient's auth user id. Codes match case-insensitively.\n\n`200` valid · `404 INVALID_REFERRAL_CODE` no ACTIVE HP has it · `400 SELF_REFERRAL` it is this user's own HP code."
+          },
+          "response": [
+            {
+              "name": "200 valid",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referral-codes/{{referralCode}}?referredUserId={{citizenUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referral-codes",
+                    "{{referralCode}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "referredUserId",
+                      "value": "{{citizenUserId}}"
+                    }
+                  ]
+                },
+                "description": "Signup form check, read-only. `referredUserId` = the patient's auth user id. Codes match case-insensitively.\n\n`200` valid · `404 INVALID_REFERRAL_CODE` no ACTIVE HP has it · `400 SELF_REFERRAL` it is this user's own HP code."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"valid\": true,\n  \"healthPartnerId\": \"hp_1762330000000_a1b2c3d4\"\n}"
+            },
+            {
+              "name": "404 unknown code",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referral-codes/{{referralCode}}?referredUserId={{citizenUserId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referral-codes",
+                    "{{referralCode}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "referredUserId",
+                      "value": "{{citizenUserId}}"
+                    }
+                  ]
+                },
+                "description": "Signup form check, read-only. `referredUserId` = the patient's auth user id. Codes match case-insensitively.\n\n`200` valid · `404 INVALID_REFERRAL_CODE` no ACTIVE HP has it · `400 SELF_REFERRAL` it is this user's own HP code."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"code\": \"INVALID_REFERRAL_CODE\",\n  \"message\": \"No active Health Partner has this referral code.\"\n}"
             }
-          }
+          ]
         },
         {
           "name": "Register Referral (patient signed up) → PENDING",
@@ -850,8 +936,105 @@
                   "language": "json"
                 }
               }
+            },
+            "description": "The patient created their profile with this code. Creates a **PENDING** citizen referral - no reward yet.\n\n`201` created · `200` the same user + code again (idempotent) · `404 INVALID_REFERRAL_CODE` · `400 SELF_REFERRAL` · `409 ALREADY_REFERRED` this user was referred before (by another code, or as an HP)."
+          },
+          "response": [
+            {
+              "name": "201 PENDING",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referrals",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referrals"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "The patient created their profile with this code. Creates a **PENDING** citizen referral - no reward yet.\n\n`201` created · `200` the same user + code again (idempotent) · `404 INVALID_REFERRAL_CODE` · `400 SELF_REFERRAL` · `409 ALREADY_REFERRED` this user was referred before (by another code, or as an HP)."
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"id\": \"ref_1762335000000_k3j9x2ab\",\n  \"healthPartnerId\": \"hp_1762330000000_a1b2c3d4\",\n  \"referredUserId\": \"8a6f1c2e-4b7d-4e1a-9c3f-2d5e6f7a8b9c\",\n  \"referralCode\": \"HPK7Q2M9XA\",\n  \"referredType\": \"CITIZEN\",\n  \"rewardAmount\": \"10.00\",\n  \"createdAt\": \"2026-11-05T09:30:00.000Z\",\n  \"status\": \"PENDING\",\n  \"completedAt\": null\n}"
+            },
+            {
+              "name": "409 already referred",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referrals",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referrals"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "The patient created their profile with this code. Creates a **PENDING** citizen referral - no reward yet.\n\n`201` created · `200` the same user + code again (idempotent) · `404 INVALID_REFERRAL_CODE` · `400 SELF_REFERRAL` · `409 ALREADY_REFERRED` this user was referred before (by another code, or as an HP)."
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"code\": \"ALREADY_REFERRED\",\n  \"message\": \"This user has already been referred.\"\n}"
             }
-          }
+          ]
         },
         {
           "name": "Register again (lower-case code) → 200, same referral",
@@ -1000,8 +1183,107 @@
                   "language": "json"
                 }
               }
+            },
+            "description": "The patient linked their **own** ABHA. PENDING → **COMPLETED** and ₹10 credited to the HP's wallet, in one transaction. Works without a prior register too.\n\n`credited: false` = it was already completed - nothing paid again. `409 REFERRAL_CANCELLED` · `409 ALREADY_REFERRED` · `404` / `400` as for register when there was no referral yet."
+          },
+          "response": [
+            {
+              "name": "200 credited",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referrals",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "The patient linked their **own** ABHA. PENDING → **COMPLETED** and ₹10 credited to the HP's wallet, in one transaction. Works without a prior register too.\n\n`credited: false` = it was already completed - nothing paid again. `409 REFERRAL_CANCELLED` · `409 ALREADY_REFERRED` · `404` / `400` as for register when there was no referral yet."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"referral\": {\n    \"id\": \"ref_1762335000000_k3j9x2ab\",\n    \"healthPartnerId\": \"hp_1762330000000_a1b2c3d4\",\n    \"referredUserId\": \"8a6f1c2e-4b7d-4e1a-9c3f-2d5e6f7a8b9c\",\n    \"referralCode\": \"HPK7Q2M9XA\",\n    \"referredType\": \"CITIZEN\",\n    \"rewardAmount\": \"10.00\",\n    \"createdAt\": \"2026-11-05T09:30:00.000Z\",\n    \"status\": \"COMPLETED\",\n    \"completedAt\": \"2026-11-07T11:02:00.000Z\"\n  },\n  \"credited\": true\n}"
+            },
+            {
+              "name": "200 already paid",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referrals",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "The patient linked their **own** ABHA. PENDING → **COMPLETED** and ₹10 credited to the HP's wallet, in one transaction. Works without a prior register too.\n\n`credited: false` = it was already completed - nothing paid again. `409 REFERRAL_CANCELLED` · `409 ALREADY_REFERRED` · `404` / `400` as for register when there was no referral yet."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"referral\": {\n    \"id\": \"ref_1762335000000_k3j9x2ab\",\n    \"healthPartnerId\": \"hp_1762330000000_a1b2c3d4\",\n    \"referredUserId\": \"8a6f1c2e-4b7d-4e1a-9c3f-2d5e6f7a8b9c\",\n    \"referralCode\": \"HPK7Q2M9XA\",\n    \"referredType\": \"CITIZEN\",\n    \"rewardAmount\": \"10.00\",\n    \"createdAt\": \"2026-11-05T09:30:00.000Z\",\n    \"status\": \"COMPLETED\",\n    \"completedAt\": \"2026-11-07T11:02:00.000Z\"\n  },\n  \"credited\": false\n}"
             }
-          }
+          ]
         },
         {
           "name": "Complete again → not credited twice",
@@ -1187,8 +1469,59 @@
                   "language": "json"
                 }
               }
+            },
+            "description": "The patient erased their account before linking an ABHA. PENDING → **CANCELLED**; any other status is left as it is and returned (`null` = no referral)."
+          },
+          "response": [
+            {
+              "name": "200 cancelled",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-service-name",
+                    "value": "userservice"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/internal/v1/referrals/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "referrals",
+                    "cancel"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"referredUserId\": \"{{citizen2UserId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "The patient erased their account before linking an ABHA. PENDING → **CANCELLED**; any other status is left as it is and returned (`null` = no referral)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "body": "{\n  \"status\": \"CANCELLED\"\n}"
             }
-          }
+          ]
         },
         {
           "name": "Complete after cancel → 409",
@@ -1299,8 +1632,11 @@
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
                   "pm.test(\"has referrals\", () => pm.expect(Array.isArray(json) && json.length >= 1).to.be.true);",
-                  "const mine = json.find((r) => r.referredUserId === pm.collectionVariables.get(\"citizenUserId\"));",
-                  "pm.test(\"citizen referral COMPLETED\", () => pm.expect(mine && mine.status).to.eql(\"COMPLETED\"));"
+                  "const citizen = pm.collectionVariables.get(\"citizenUserId\");",
+                  "if (citizen) {",
+                  "  const mine = json.find((r) => r.referredUserId === citizen);",
+                  "  pm.test(\"citizen referral COMPLETED\", () => pm.expect(mine && mine.status).to.eql(\"COMPLETED\"));",
+                  "}"
                 ]
               }
             }
@@ -2302,6 +2638,90 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Check code: unknown → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code INVALID_REFERRAL_CODE\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_REFERRAL_CODE\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referral-codes/HPNOSUCHCODE?referredUserId=citizen-x",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referral-codes",
+                "HPNOSUCHCODE"
+              ],
+              "query": [
+                {
+                  "key": "referredUserId",
+                  "value": "citizen-x"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check code: HP's own → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code SELF_REFERRAL\", () => pm.expect(pm.response.json().code).to.eql(\"SELF_REFERRAL\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referral-codes/{{referralCode}}?referredUserId={{hpUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referral-codes",
+                "{{referralCode}}"
+              ],
+              "query": [
+                {
+                  "key": "referredUserId",
+                  "value": "{{hpUserId}}"
+                }
+              ]
             }
           }
         }
