@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Uyir Health Partner Service",
-    "description": "Health Partner service: profiles, District → Block → Village location, referrals, wallet and withdrawals.\n\n**Caller identity:** the API Gateway injects `x-user-id` and `x-user-role`. Here they are placeholders set from collection variables:\n- `hpUserId` / `hpRole` — the Health Partner (role HP)\n- `newHpUserId` — second Health Partner, used for the referral flow\n- `adminUserId` / `adminRole` — ADMIN or SUPER_ADMIN (locations + district APIs)\n\n**Run order:** folders 1 → 7 run top to bottom as a full flow (Collection Runner works). IDs (district, block, village, referral code, …) are saved into collection variables as you go. Select the **Health Partner Service - local** environment before running. On re-runs change `hpUserId`, `newHpUserId`, `districtName`, `blockName` and `villageName` in the environment.",
+    "description": "Health Partner service: profiles, District → Block → Village location, referrals, wallet and withdrawals.\n\n**Caller identity:** the API Gateway injects `x-user-id` and `x-user-role`. Here they are placeholders set from collection variables:\n- `hpUserId` / `hpRole` — the Health Partner (role HP)\n- `newHpUserId` — second Health Partner, used for the HP referral flow\n- Folder 4 calls the internal API as userservice would (no identity headers - `/internal/v1` is never forwarded by the gateway)\n- `adminUserId` / `adminRole` — ADMIN or SUPER_ADMIN (locations + district APIs)\n\n**Run order:** folders 1 → 7 run top to bottom as a full flow (Collection Runner works). IDs (district, block, village, referral code, …) are saved into collection variables as you go. Select the **Health Partner Service - local** environment before running. On re-runs change `hpUserId`, `newHpUserId`, `districtName`, `blockName` and `villageName` in the environment.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -31,6 +31,18 @@
     },
     {
       "key": "withdrawalId",
+      "value": ""
+    },
+    {
+      "key": "citizen2UserId",
+      "value": ""
+    },
+    {
+      "key": "referralCodeLower",
+      "value": ""
+    },
+    {
+      "key": "walletBeforeComplete",
       "value": ""
     }
   ],
@@ -736,18 +748,19 @@
     },
     {
       "name": "4. Referrals",
-      "description": "Role HP. Only CITIZEN referrals are created here; HP referrals happen during Health Partner creation.",
+      "description": "Citizen referrals. The patient enters the HP's code when creating their profile in the app; userservice then calls the internal API below (no gateway, no token - private network only):\n\n1. `GET /internal/v1/referral-codes/:code?referredUserId=` - is the code valid for this patient (signup form check)\n2. `POST /internal/v1/referrals` - patient signed up with the code: **PENDING**, no reward\n3. `POST /internal/v1/referrals/complete` - patient's own ABHA linked: **COMPLETED**, ₹10 to the HP's wallet\n4. `POST /internal/v1/referrals/cancel` - patient erased their account before linking: **CANCELLED**\n\nEvery call is idempotent (userservice retries). The old HP-called `POST /api/v1/referrals` is gone - an HP can no longer claim a reward by naming a user id.",
       "item": [
         {
-          "name": "Create Citizen Referral",
+          "name": "Check Referral Code",
           "event": [
             {
               "listen": "prerequest",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// Fresh citizen id per run - a user can only ever be referred once.",
-                  "pm.collectionVariables.set(\"citizenUserId\", \"citizen-\" + Date.now());"
+                  "// Fresh patients per run - a user can only ever be referred once.",
+                  "pm.collectionVariables.set(\"citizenUserId\", \"citizen-\" + Date.now());",
+                  "pm.collectionVariables.set(\"citizen2UserId\", \"citizen2-\" + Date.now());"
                 ]
               }
             },
@@ -756,9 +769,52 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"valid\", () => pm.expect(pm.response.json().valid).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referral-codes/{{referralCode}}?referredUserId={{citizenUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referral-codes",
+                "{{referralCode}}"
+              ],
+              "query": [
+                {
+                  "key": "referredUserId",
+                  "value": "{{citizenUserId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Register Referral (patient signed up) → PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
                   "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
                   "const json = pm.response.json();",
-                  "pm.test(\"reward ₹10\", () => pm.expect(Number(json.rewardAmount) === 10).to.be.true);"
+                  "pm.test(\"PENDING, completedAt null\", () => pm.expect(json.status === \"PENDING\" && json.completedAt === null).to.be.true);",
+                  "pm.test(\"CITIZEN, reward ₹10 to come\", () => pm.expect(json.referredType === \"CITIZEN\" && Number(json.rewardAmount) === 10).to.be.true);"
                 ]
               }
             }
@@ -771,6 +827,109 @@
                 "value": "application/json"
               },
               {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register again (lower-case code) → 200, same referral",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"referralCodeLower\", pm.collectionVariables.get(\"referralCode\").toLowerCase());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"still PENDING\", () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCodeLower}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dashboard: 1 pending, nothing paid for it yet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"1 pending referral\", () => pm.expect(json.pendingReferrals).to.eql(1));",
+                  "pm.collectionVariables.set(\"walletBeforeComplete\", String(json.walletBalance));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
                 "key": "x-user-id",
                 "value": "{{hpUserId}}"
               },
@@ -780,19 +939,347 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/referrals",
+              "raw": "{{baseUrl}}/api/v1/health-partners/dashboard",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "v1",
+                "health-partners",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Complete Referral (ABHA linked) → ₹10 credited",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"credited\", () => pm.expect(json.credited).to.be.true);",
+                  "pm.test(\"COMPLETED with completedAt\", () => pm.expect(json.referral.status === \"COMPLETED\" && !!json.referral.completedAt).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Complete again → not credited twice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"not credited again\", () => pm.expect(pm.response.json().credited).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dashboard: wallet +₹10 exactly once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test(\"no pending left\", () => pm.expect(json.pendingReferrals).to.eql(0));",
+                  "pm.test(\"wallet +10\", () => pm.expect(Number(json.walletBalance) - Number(pm.collectionVariables.get(\"walletBeforeComplete\"))).to.eql(10));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{hpUserId}}"
+              },
+              {
+                "key": "x-user-role",
+                "value": "{{hpRole}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health-partners/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health-partners",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Register second patient → PENDING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
                 "referrals"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\",\n  \"referredType\": \"CITIZEN\"\n}",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizen2UserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel (patient erased account) → CANCELLED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"CANCELLED\", () => pm.expect(pm.response.json().status).to.eql(\"CANCELLED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referredUserId\": \"{{citizen2UserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Complete after cancel → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code REFERRAL_CANCELLED\", () => pm.expect(pm.response.json().code).to.eql(\"REFERRAL_CANCELLED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizen2UserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel a completed referral → left COMPLETED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"still COMPLETED\", () => pm.expect(pm.response.json().status).to.eql(\"COMPLETED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referredUserId\": \"{{citizenUserId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -811,7 +1298,9 @@
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const json = pm.response.json();",
-                  "pm.test(\"has referrals\", () => pm.expect(Array.isArray(json) && json.length >= 1).to.be.true);"
+                  "pm.test(\"has referrals\", () => pm.expect(Array.isArray(json) && json.length >= 1).to.be.true);",
+                  "const mine = json.find((r) => r.referredUserId === pm.collectionVariables.get(\"citizenUserId\"));",
+                  "pm.test(\"citizen referral COMPLETED\", () => pm.expect(mine && mine.status).to.eql(\"COMPLETED\"));"
                 ]
               }
             }
@@ -1573,7 +2062,55 @@
           }
         },
         {
-          "name": "Duplicate citizen referral → 400",
+          "name": "Unknown referral code → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code INVALID_REFERRAL_CODE\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_REFERRAL_CODE\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"HPNOSUCHCODE\",\n  \"referredUserId\": \"citizen-unknown-code\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "HP using own code → 400",
           "event": [
             {
               "listen": "test",
@@ -1581,8 +2118,151 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
-                  "const json = pm.response.json();",
-                  "pm.test(\"message: already been referred\", () => pm.expect(json.message.includes(\"already been referred\")).to.be.true);"
+                  "pm.test(\"code SELF_REFERRAL\", () => pm.expect(pm.response.json().code).to.eql(\"SELF_REFERRAL\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{hpUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Referred HP as citizen → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ALREADY_REFERRED\", () => pm.expect(pm.response.json().code).to.eql(\"ALREADY_REFERRED\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{newHpUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Missing referredUserId → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-service-name",
+                "value": "userservice"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/internal/v1/referrals/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "referrals",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Old HP-called citizen referral → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
                 ]
               }
             }
@@ -1616,7 +2296,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"{{citizenUserId}}\",\n  \"referredType\": \"CITIZEN\"\n}",
+              "raw": "{\n  \"referralCode\": \"{{referralCode}}\",\n  \"referredUserId\": \"someone\",\n  \"referredType\": \"CITIZEN\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -46,11 +46,12 @@ export async function dashboard(req: Request, res: Response) {
     const referrals = await pool.query(
       `
       SELECT
-        COUNT(*)::int AS "totalReferrals",
-        COALESCE(SUM(reward_amount), 0) AS "totalEarnings"
+        COUNT(*) FILTER (WHERE status = 'COMPLETED')::int AS "totalReferrals",
+        COALESCE(SUM(reward_amount) FILTER (WHERE status = 'COMPLETED'), 0) AS "totalEarnings",
+        -- signed up with the HP's code, ABHA not linked yet (no reward yet)
+        COUNT(*) FILTER (WHERE status = 'PENDING')::int AS "pendingReferrals"
       FROM referrals
       WHERE referrer_health_partner_id = $1
-        AND status = 'COMPLETED'
       `,
       [hp.healthPartnerId]
     );
@@ -61,6 +62,7 @@ export async function dashboard(req: Request, res: Response) {
       referralCode: hp.referralCode,
       totalReferrals: referrals.rows[0].totalReferrals,
       totalEarnings: referrals.rows[0].totalEarnings,
+      pendingReferrals: referrals.rows[0].pendingReferrals,
       walletBalance: hp.walletBalance,
       status: hp.status,
     });
