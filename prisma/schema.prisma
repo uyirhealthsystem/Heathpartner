@@ -2,7 +2,8 @@
 // Change this file, then `npm run db:migrate:dev -- --name <change>`.
 //
 // The case-insensitive unique indexes on LOWER(name) for districts, blocks
-// and villages can't be expressed here; they live in the migration SQL.
+// and villages, and the UPPER(referral_code) lookup index on health_partners,
+// can't be expressed here; they live in the migration SQL.
 
 datasource db {
   provider = "postgresql"
@@ -86,7 +87,9 @@ model Village {
 }
 
 // referred_type: CITIZEN | HEALTH_PARTNER, status: PENDING | COMPLETED |
-// CANCELLED - enforced by CHECK constraints in the migration SQL.
+// CANCELLED - enforced by CHECK constraints in the migration SQL. Citizen
+// referrals are created PENDING by userservice (patient signed up with the
+// code) and COMPLETED, with the reward, once the patient links their ABHA.
 model Referral {
   id                      String   @id @db.VarChar(100)
   referrerHealthPartnerId String   @map("referrer_health_partner_id") @db.VarChar(100)
@@ -96,10 +99,12 @@ model Referral {
   status                  String   @default("COMPLETED") @db.VarChar(30)
   rewardAmount            Decimal  @default(10) @map("reward_amount") @db.Decimal(12, 2)
   createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz
-  completedAt             DateTime @default(now()) @map("completed_at") @db.Timestamptz
+  // null while PENDING
+  completedAt             DateTime? @map("completed_at") @db.Timestamptz
 
   referrer HealthPartner @relation(fields: [referrerHealthPartnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([referrerHealthPartnerId, createdAt(sort: Desc)], map: "referrals_referrer_created_idx")
   @@map("referrals")
 }
 
@@ -114,6 +119,7 @@ model Transaction {
 
   healthPartner HealthPartner @relation(fields: [healthPartnerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([healthPartnerId, createdAt(sort: Desc)], map: "transactions_health_partner_created_idx")
   @@map("transactions")
 }
 

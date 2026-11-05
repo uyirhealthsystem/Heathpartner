@@ -137,9 +137,10 @@ export async function createHealthPartner(
           referral_code,
           referred_type,
           status,
-          reward_amount
+          reward_amount,
+          completed_at
         )
-        VALUES ($1, $2, $3, $4, 'HEALTH_PARTNER', 'COMPLETED', 10)
+        VALUES ($1, $2, $3, $4, 'HEALTH_PARTNER', 'COMPLETED', 10, NOW())
         `,
         [referralId, referrerId, userId, referralCode]
       );

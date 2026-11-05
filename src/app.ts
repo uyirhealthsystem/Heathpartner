@@ -5,6 +5,7 @@ import referralRoutes from "./routes/referral.routes";
 import paymentRoutes from "./routes/payment.routes";
 import profileRoutes from "./routes/profile.routes";
 import districtRoutes from "./routes/district.routes";
+import internalRoutes from "./routes/internal.routes";
 
 const app = express();
 
@@ -23,6 +24,9 @@ app.use("/api/v1/referrals", referralRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/profile", profileRoutes);
 app.use("/api/v1/districts", districtRoutes);
+
+// Service-to-service (userservice) - never forwarded by the API Gateway.
+app.use("/internal/v1", internalRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

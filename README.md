@@ -15,7 +15,7 @@ Health Partner (HP) backend: profiles, District → Block → Village location, 
 | `ADMIN`, `SUPER_ADMIN` | Create districts / blocks / villages; district level Health Partner APIs |
 
 - Location hierarchy: a **District** has **Blocks**, a Block has **Villages**. Every Health Partner must have a district; block and village are optional, and a village needs its block. The service checks the block belongs to the district and the village to the block.
-- Reward is ₹10 for each successful referral.
+- Reward is ₹10 for each successful referral. A **citizen** referral is successful only once the patient has created their profile with the HP's code **and** linked their own ABHA (see *Citizen referrals* below).
 
 ## Configuration
 
@@ -204,19 +204,36 @@ PATCH `/api/v1/profile` — any profile field. Location is replaced as a group: 
 }
 ```
 
-### 5. Citizen referral
+### 5. Citizen referrals
 
-POST `/api/v1/referrals`
+The HP's job is to get people in their village onto the Uyir app. The HP gives a villager their referral code; the villager enters it when creating their profile in the app (userservice, `POST /api/v1/users/me` with `referralCode`).
 
-```json
-{
-  "referralCode": "HPXXXXXX",
-  "referredUserId": "CITIZEN_AUTH_USER_ID",
-  "referredType": "CITIZEN"
-}
-```
+| Step | Who | Referral | Reward |
+|---|---|---|---|
+| Villager creates their profile with the code | userservice → `POST /internal/v1/referrals` | `PENDING` | none yet |
+| Villager links **their own** ABHA (an existing one or one created in the app) | userservice → `POST /internal/v1/referrals/complete` | `COMPLETED` | ₹10 to the HP's wallet |
+| Villager erases their account before linking | userservice → `POST /internal/v1/referrals/cancel` | `CANCELLED` | none |
 
-GET `/api/v1/referrals` — my referrals
+GET `/api/v1/referrals` — my referrals, with their status. The dashboard shows `totalReferrals` / `totalEarnings` (completed only) and `pendingReferrals`.
+
+An HP can no longer create a citizen referral themselves (the old `POST /api/v1/referrals` is removed): the reward is paid only when the patient's app reports a linked ABHA.
+
+#### Internal API (userservice only)
+
+Mounted at `/internal/v1`, which the API Gateway never forwards. No token - like every internal API on the platform, only the private network keeps outsiders out, so keep this service's port closed to the internet. Errors are `{ code, message }` with a real status: userservice retries a 5xx and gives up on a 4xx.
+
+| Method | Path | Body / query | Success | Errors |
+|---|---|---|---|---|
+| GET | `/internal/v1/referral-codes/:code` | `?referredUserId=` | `200 { valid: true, healthPartnerId }` | 404 `INVALID_REFERRAL_CODE`, 400 `SELF_REFERRAL` |
+| POST | `/internal/v1/referrals` | `{ referralCode, referredUserId }` | `201` new PENDING referral, `200` same one again | 404 `INVALID_REFERRAL_CODE`, 400 `SELF_REFERRAL`, 409 `ALREADY_REFERRED` |
+| POST | `/internal/v1/referrals/complete` | `{ referralCode, referredUserId }` | `200 { referral, credited }` | 404 / 400 as above (when there was no PENDING one), 409 `ALREADY_REFERRED`, 409 `REFERRAL_CANCELLED` |
+| POST | `/internal/v1/referrals/cancel` | `{ referredUserId }` | `200 { status }` (`CANCELLED`, or the status it already had / `null`) | |
+
+- Codes match case-insensitively.
+- Every call is idempotent. `complete` credits ₹10 at most once per user (row lock + unique `referred_user_id`); `credited: false` means it was already paid. It also works with no prior `register` (userservice could not reach this service at signup).
+- A user can be referred once, ever - by an HP code at HP signup or as a citizen.
+- Indexed for volume: codes by `UPPER(referral_code)`, referrals and transactions by HP + newest first (dashboard, *my referrals*, payment history).
+- A PENDING referral never expires. If the HP is made INACTIVE meanwhile, the reward is still paid when the patient links their ABHA.
 
 ### 6. Payments
 
