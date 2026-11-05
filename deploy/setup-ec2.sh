@@ -65,7 +65,8 @@ sudo visudo -cf "/etc/sudoers.d/$SERVICE-deploy"
 cat <<EOF
 
 Done. Next:
-  1. Edit  $ROOT/shared/$SERVICE.env   (DATABASE_URL, PORT)
+  1. Edit  $ROOT/shared/$SERVICE.env   (DATABASE_URL, PORT) - and open PORT
+     to userservice only (it calls /internal/v1 for citizen referrals)
   2. Add these GitHub secrets (Settings > Environments > production):
        EC2_HOST     = this host's public DNS / IP
        EC2_USER     = $DEPLOY_USER
